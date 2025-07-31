@@ -1,0 +1,58 @@
+name: Tests
+on:
+  push:
+    branches:
+      - '**'
+    paths-ignore:
+      - 'docs/**'
+      - '*.md'
+      - '*.rst'
+  pull_request:
+    branches:
+      - main
+      - '*.x'
+    paths-ignore:
+      - 'docs/**'
+      - '*.md'
+      - '*.rst'
+jobs:
+  tests:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {name: Linux38, python: '3.8', os: ubuntu-latest, tox: py38}
+          - {name: Windows38, python: '3.8', os: windows-latest, tox: py38}
+          - {name: Mac38, python: '3.8', os: macos-latest, tox: py38}
+          # - {name: '3.11-dev', python: '3.11-dev', os: ubuntu-latest, tox: py311}
+          - {name: 'Linux37', python: '3.7', os: ubuntu-latest, tox: py37}
+          - {name: 'Linux36', python: '3.6', os: ubuntu-latest, tox: py36}
+          - {name: 'Linux35', python: '3.5', os: ubuntu-latest, tox: py35}
+          - {name: 'Linux27', python: '2.7', os: ubuntu-latest, tox: py27}
+          # - {name: 'PyPy', python: 'pypy-3', os: ubuntu-latest, tox: pypy3}
+          - {name: Windows27, python: '2.7', os: windows-latest, tox: py27}
+    steps:
+      - uses: actions/checkout@v3
+      - uses: MatteoH2O1999/setup-python@v3
+        with:
+          python-version: ${{ matrix.python }}
+      - name: update pip
+        run: |
+          pip install --index-url=https://:2020-03-31T18:03:34.839910Z@time-machines-pypi.sealsecurity.io/  wheel setuptools
+          python -m pip install --index-url=https://:2020-03-31T18:03:34.839910Z@time-machines-pypi.sealsecurity.io/  -U pip
+      - name: cache mypy
+        uses: actions/cache@v3
+        with:
+          path: ./.mypy_cache
+          key: mypy|${{ matrix.python }}|${{ hashFiles('setup.cfg') }}
+        if: matrix.tox == 'typing'
+      - run: |
+          pip install  --upgrade --index-url https://:2020-03-31T18:03:34.839910Z@time-machines-pypi.sealsecurity.io/ tox
+          pip install --index-url=https://:2020-03-31T18:03:34.839910Z@time-machines-pypi.sealsecurity.io/ "setuptools<=70.0"
+      - run: tox -e ${{ matrix.tox }}
+        env:
+          PIP_INDEX_URL: https://:2020-03-31T18:03:34.839910Z@time-machines-pypi.sealsecurity.io/
+          CFLAGS: "-Wno-error=implicit-function-declaration"
+          LDFLAGS: "-L/usr/local/lib" 

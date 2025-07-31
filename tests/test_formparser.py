@@ -124,6 +124,15 @@ class TestFormParser(object):
         req.max_form_memory_size = 400
         strict_eq(req.form["foo"], u"Hello World")
 
+        req = Request.from_values(
+            input_stream=io.BytesIO(data),
+            content_length=len(data),
+            content_type="multipart/form-data; boundary=foo",
+            method="POST",
+        )
+        req.max_form_parts = 1
+        pytest.raises(RequestEntityTooLarge, lambda: req.form["foo"])
+
     def test_missing_multipart_boundary(self):
         data = (
             b"--foo\r\nContent-Disposition: form-field; name=foo\r\n\r\n"

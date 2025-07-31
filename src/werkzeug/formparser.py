@@ -168,6 +168,10 @@ class FormDataParser(object):
     :param cls: an optional dict class to use.  If this is not specified
                        or `None` the default :class:`MultiDict` is used.
     :param silent: If set to False parsing errors will not be caught.
+    :param max_form_parts: the maximum number of parts to be accepted for the
+                           multipart data sent. If this is exceeded an
+                           :exc:`~exceptions.RequestEntityTooLarge` exception
+                           is raised.
     """
 
     def __init__(
@@ -179,6 +183,7 @@ class FormDataParser(object):
         max_content_length=None,
         cls=None,
         silent=True,
+        max_form_parts=None,
     ):
         if stream_factory is None:
             stream_factory = default_stream_factory
@@ -191,6 +196,7 @@ class FormDataParser(object):
             cls = MultiDict
         self.cls = cls
         self.silent = silent
+        self.max_form_parts = max_form_parts
 
     def get_parse_func(self, mimetype, options):
         return self.parse_functions.get(mimetype)
@@ -244,6 +250,7 @@ class FormDataParser(object):
             self.errors,
             max_form_memory_size=self.max_form_memory_size,
             cls=self.cls,
+            max_form_parts=self.max_form_parts,
         )
         boundary = options.get("boundary")
         if boundary is None:
@@ -333,10 +340,12 @@ class MultiPartParser(object):
         max_form_memory_size=None,
         cls=None,
         buffer_size=64 * 1024,
+        max_form_parts=None,
     ):
         self.charset = charset
         self.errors = errors
         self.max_form_memory_size = max_form_memory_size
+        self.max_form_parts = max_form_parts
         self.stream_factory = (
             default_stream_factory if stream_factory is None else stream_factory
         )
@@ -528,11 +537,12 @@ class MultiPartParser(object):
 
             yield _end, None
 
-    def parse_parts(self, file, boundary, content_length):
+    def parse_parts(self, file, boundary, content_length, max_parts=None):
         """Generate ``('file', (name, val))`` and
         ``('form', (name, val))`` parts.
         """
         in_memory = 0
+        _parts_decoded = 0
 
         for ellt, ell in self.parse_lines(file, boundary, content_length):
             if ellt == _begin_file:
@@ -562,6 +572,9 @@ class MultiPartParser(object):
                         self.in_memory_threshold_reached(in_memory)
 
             elif ellt == _end:
+                _parts_decoded += 1
+                if max_parts is not None and _parts_decoded > max_parts:
+                    raise exceptions.RequestEntityTooLarge()
                 if is_file:
                     container.seek(0)
                     yield (
@@ -577,7 +590,8 @@ class MultiPartParser(object):
 
     def parse(self, file, boundary, content_length):
         formstream, filestream = tee(
-            self.parse_parts(file, boundary, content_length), 2
+            self.parse_parts(file, boundary, content_length,
+                             max_parts=self.max_form_parts), 2
         )
         form = (p[1] for p in formstream if p[0] == "form")
         files = (p[1] for p in filestream if p[0] == "file")
